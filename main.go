@@ -9,10 +9,15 @@ import (
 	"strings"
 	"time"
 
+	jwt "github.com/dgrijalva/jwt-go"
 	"github.com/labstack/echo"
 	"github.com/labstack/echo/middleware"
 )
 
+type JwtClaims struct {
+	Name string `json:"name"`
+	jwt.StandardClaims
+}
 type Cat struct {
 	Name string `json:"name"`
 	Type string `json:"type"`
@@ -111,7 +116,6 @@ func login(c echo.Context) error {
 	username := c.QueryParam("username")
 	password := c.QueryParam("password")
 
-	// check username and password against DB after hashing the password
 	if username == "jack" && password == "1234" {
 		cookie := &http.Cookie{}
 
@@ -124,7 +128,17 @@ func login(c echo.Context) error {
 
 		c.SetCookie(cookie)
 
-		return c.String(http.StatusOK, "You are now logged in!")
+		// create jwt token
+		token, err := createJwtToken()
+		if err != nil {
+			log.Println("Error Creating JWT token", err)
+			return c.String(http.StatusInternalServerError, "something went wrong")
+		}
+
+		return c.JSON(http.StatusOK, map[string]string{
+			"message": "You are logged in!",
+			"token":   token,
+		})
 	}
 
 	return c.String(http.StatusUnauthorized, "Your username or password were wrong")
@@ -148,13 +162,41 @@ func checkCookie(next echo.HandlerFunc) echo.HandlerFunc {
 		return c.String(http.StatusUnauthorized, "you dont have the right cookie, cookie")
 	}
 }
+func mainJwt(c echo.Context) error {
+	user := c.Get("user")
+	token := user.(*jwt.Token)
 
+	claims := token.Claims.(jwt.MapClaims)
+
+	log.Println("User Name: ", claims["name"], "User ID: ", claims["jti"])
+
+	return c.String(http.StatusOK, "you are on the top secret jwt page!")
+}
+func createJwtToken() (string, error) {
+	claims := JwtClaims{
+		"jack",
+		jwt.StandardClaims{
+			Id:        "main_user_id",
+			ExpiresAt: time.Now().Add(24 * time.Hour).Unix(),
+		},
+	}
+
+	rawToken := jwt.NewWithClaims(jwt.SigningMethodHS512, claims)
+
+	token, err := rawToken.SignedString([]byte("mySecret"))
+	if err != nil {
+		return "", err
+	}
+
+	return token, nil
+}
 func main() {
 	fmt.Println("GO Echo Server")
 	e := echo.New()
 	e.Use(ServerHeader)
 	adminGroup := e.Group("/admin")
 	cookieGroup := e.Group("/cookie")
+	jwtGroup := e.Group("/jwt")
 	// this logs the server interaction
 	adminGroup.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{
 		Format: `[${time_rfc3339}]  ${status}  ${method} ${host}${path} ${latency_human}` + "\n",
@@ -168,9 +210,15 @@ func main() {
 
 		return false, nil
 	}))
-	adminGroup.GET("/main", mainAdmin)
+
+	jwtGroup.Use(middleware.JWTWithConfig(middleware.JWTConfig{
+		SigningMethod: "HS512",
+		SigningKey:    []byte("mySecret"),
+	}))
 	cookieGroup.Use(checkCookie)
 	cookieGroup.GET("/main", mainCookie)
+	adminGroup.GET("/main", mainAdmin)
+	jwtGroup.GET("/main", mainJwt)
 	e.GET("/login", login)
 	e.GET("/", yallo)
 	e.GET("/cats/:data", getCats)
