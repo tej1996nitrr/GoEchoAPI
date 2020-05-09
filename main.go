@@ -93,9 +93,20 @@ func addHamster(c echo.Context) error {
 func mainAdmin(c echo.Context) error {
 	return c.String(http.StatusOK, "horay you are on the amdin main page!")
 }
+
+func ServerHeader(next echo.HandlerFunc) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		c.Response().Header().Set(echo.HeaderServer, "ThisServer/1.0")
+		c.Response().Header().Set("notReallyHeader", "thisHaveNoMeaning")
+
+		return next(c)
+	}
+}
+
 func main() {
 	fmt.Println("GO Echo Server")
 	e := echo.New()
+	e.Use(ServerHeader)
 	g := e.Group("/admin")
 	// this logs the server interaction
 	g.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{
