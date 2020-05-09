@@ -91,7 +91,7 @@ func addHamster(c echo.Context) error {
 	return c.String(http.StatusOK, "we got your hamster!")
 }
 func mainAdmin(c echo.Context) error {
-	return c.String(http.StatusOK, "horay you are on the secret amdin main page!")
+	return c.String(http.StatusOK, "horay you are on the amdin main page!")
 }
 func main() {
 	fmt.Println("GO Echo Server")
@@ -102,6 +102,14 @@ func main() {
 		Format: `[${time_rfc3339}]  ${status}  ${method} ${host}${path} ${latency_human}` + "\n",
 	}))
 
+	g.Use(middleware.BasicAuth(func(username, password string, c echo.Context) (bool, error) {
+		// check in the DB
+		if username == "jack" && password == "1234" {
+			return true, nil
+		}
+
+		return false, nil
+	}))
 	g.GET("/main", mainAdmin)
 	e.GET("/", yallo)
 	e.GET("/cats/:data", getCats)
